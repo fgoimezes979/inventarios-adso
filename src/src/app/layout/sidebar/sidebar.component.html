@@ -1,0 +1,97 @@
+<aside class="main-sidebar sidebar-dark-primary elevation-4">
+  <!-- Brand Logo -->
+  <a href="#" class="brand-link">
+    
+    <span class="brand-text font-weight-light">Inventario Camiestampados</span>
+  </a>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <!-- Sidebar user panel -->
+    <div class="user-panel mt-3 pb-3 mb-3 d-flex">
+      <div class="image">
+        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS6RM6W7xrOhZM7j2doYvqktHT2HWYWOi_4xQ&s" class="img-circle elevation-2" alt="User Image">
+      </div>
+      <div class="info">
+        <a href="#" class="d-block">Lucindo Gomez</a>
+      </div>
+    </div>
+
+    <!-- Sidebar Menu -->
+    <nav class="mt-2">
+      <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
+
+        <!-- Dashboard -->
+        <li class="nav-item">
+          <a [routerLink]="['/dashboard']" class="nav-link">
+            <i class="fas fa-home nav-icon"></i>
+            <p>Dashboard</p>
+          </a>
+        </li>
+
+        <!-- Inventario -->
+        <li class="nav-item has-treeview">
+          <a href="#" class="nav-link">
+            <i class="fas fa-boxes nav-icon"></i>
+            <p>
+              Inventario
+              <i class="right fas fa-angle-left"></i>
+            </p>
+          </a>
+          <ul class="nav nav-treeview">
+            <li class="nav-item">
+              <a [routerLink]="['/products/list']" class="nav-link">
+                <i class="fas fa-tshirt nav-icon"></i>
+                <p>listar productos</p>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a [routerLink]="['/products/edit', 1]" class="nav-link">
+                <i class="fas fa-tshirt nav-icon"></i>
+                <p>editar productos</p>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a [routerLink]="['/users/list']" class="nav-link">
+                <i class="fas fa-users nav-icon"></i>
+                <p>Usuarios</p>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a [routerLink]="['/products/create']" class="nav-link">
+                <i class="fas fa-store nav-icon"></i>
+                <p>crear productos</p>
+              </a>
+            </li>
+          </ul>
+        </li>
+
+        <!-- Reportes -->
+        <li class="nav-item has-treeview">
+          <a href="#" class="nav-link">
+            <i class="fas fa-file-alt nav-icon"></i>
+            <p>
+              Reportes
+              <i class="right fas fa-angle-left"></i>
+            </p>
+          </a>
+          <ul class="nav nav-treeview">
+            <li class="nav-item">
+              <a [routerLink]="['/products/show']" class="nav-link">
+                <i class="fas fa-chart-line nav-icon"></i>
+                <p>Otra opción</p>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a [routerLink]="['/users/list']" class="nav-link">
+                <i class="fas fa-file-alt nav-icon"></i>
+                <p>Reportes</p>
+              </a>
+            </li>
+          </ul>
+        </li>
+
+      </ul>
+    </nav>
+  </div>
+</aside>

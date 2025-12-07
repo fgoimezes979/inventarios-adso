@@ -1,0 +1,28 @@
+/* You can add global styles to this file, and also import other style files */
+.card-title {
+    color: blue;
+}
+th {
+background-color: tomato;
+color:  white;
+text-align: left;
+
+
+}
+
+tr :hover {
+    background-color: #aaa;
+    cursor: pointer;
+}
+
+tr,td :nth-child(even){
+    background-color: #eee;
+}
+
+h1 {
+    font-family:'Gothic Medium' ;
+    color: chartreuse;
+    text-shadow: 3px 5px 10px; color:blue;
+
+}
+

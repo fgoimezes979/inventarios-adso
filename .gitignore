@@ -1,0 +1,38 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment
+.env
+
+# Build
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Compressed
+*.zip
+
+# Documents
+*.docx
+*.pdf
+
+# Misc
+evidencia*
+archivos_descomprimidos/
+
+
+
+# Misc
+evidencia*
+archivos_descomprimidos/
+
+
+
