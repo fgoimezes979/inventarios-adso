@@ -75,7 +75,16 @@ Product.init(
     image: {
       type: DataTypes.STRING(255),
       allowNull: true,
-    },
+
+     
+
+  // 🔥 STOCK MÍNIMO (ESTE ES EL QUE FALTABA)
+  minimum_stock: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
+  },
+    }, 
     isActive: {
       type: DataTypes.BOOLEAN,
       allowNull: false,

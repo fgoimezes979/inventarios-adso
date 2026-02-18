@@ -1,34 +1,35 @@
-const{  Router} = require("express");
+const { Router } = require("express");
 const router = Router();
- 
-/**importar los metodos del controlador */
 
-const{login, index, create, show, update, destroy} = require("../../../controllers/parameters/security/user.controllers");
+/** importar middleware */
+const authMiddleware = require("../../../middlewares/auth.middleware");
 
+/** importar controladores */
+const {
+  login,
+  index,
+  create,
+  show,
+  update,
+  destroy
+} = require("../../../controllers/parameters/security/user.controllers");
 
-router.post("/login" , login);
-/**ruta para el metodo show */
+/** ============================
+ *  RUTA PUBLICA
+ ============================ */
+router.post("/login", login);
 
+/** ============================
+ *  PROTEGER TODO LO DEMÁS
+ ============================ */
+router.use(authMiddleware);
 
-/**ruta para el metodo index */
-router.get("/" , index);
+/** rutas protegidas */
+router.get("/", index);
+router.post("/", create);
+router.get("/:id", show);
+router.put("/:id", update);
+router.delete("/:id", destroy);
 
-/**ruta para el meatodo create */
-
-
-router.post("/" , create);
-/**ruta para actualizar una marca */
-
-
-router.get("/:id" , show);
-/**ruta para actualizar una marca */
-
-router.put("/:id" , update);
-/**ruta para elimunar una marca */
-
-router.delete("/:id" , destroy);
-
-
-/**exportamos el modulo */
+/** exportar modulo */
 module.exports = router;
-

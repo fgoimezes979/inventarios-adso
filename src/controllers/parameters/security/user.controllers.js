@@ -39,18 +39,27 @@ const login = async (req, res) =>{
 
 const validpassword =bcrypt.compareSync(password, existUser.password)
 
-if(validpassword){
-    const token = jwt.sign(
-  { id: existUser.id, email: existUser.email },
-  process.env.JWT_SECRET || 'clave_secreta', // usa una variable de entorno idealmente
-  { expiresIn: '1h' }
-);
-    return res.status(200).json({
-            status:true,
-            msg: "inicio de sesion correcta",
-            user: existUser,
-            token: token, 
-        });
+if (validpassword) {
+  const token = jwt.sign(
+    {
+      id: existUser.id,
+      email: existUser.email,
+      role: existUser.role
+    },
+   process.env.JWT_SECRET,
+
+    { expiresIn: '1h' }
+  );
+
+  const { password, ...userSafe } = existUser.dataValues;
+
+  return res.status(200).json({
+    status: true,
+    msg: "inicio de sesion correcta",
+    user: userSafe,
+    token: token
+  });
+
 
 
 }else

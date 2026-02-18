@@ -1,9 +1,14 @@
 const { Op } = require("sequelize");
-const { Order, Product, Client, Location, OrderProduct, LocationProduct } = require("../../../models/model-index");
+const { Order, Product, Client, Location, OrderProduct, OperationDetail, LocationProduct } = require("../../../models/model-index");
 const Operation = require("../../../models/parameters/operations/operation.model"); // 👈 agregar esto
 const sequelize = require("../../../models/database/dbconnection");
 const Out = require("../../../models/parameters/outs/out.model");
 const { createMovementFromOrder } = require("../../../controllers/parameters/txs/tx.controller");
+const JournalEntry = require("../../../models/accounting/JournalEntry.model");
+const { createJournalsFromOperation } = require("../../../services/accounting/createJournals");
+
+
+
 
 /* ===========================================================
    📦 LISTAR ÓRDENES (USANDO total_price DE LA BD)
@@ -197,226 +202,173 @@ const getProductsByLocation = async (req, res) => {
 
 
 // CREAR ORDEN
+// CREAR ORDEN
 const create = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
-    let { products, product_id, quantity, state, date, due_date, client_id, location_id, user_creates_id } = req.body;
+    const {
+      products,
+      state,
+      date,
+      due_date,
+      client_id,
+      location_id,
+      user_creates_id,
+    } = req.body;
 
-    // Si no viene un array de productos, convertir a array
-    if (!Array.isArray(products)) {
-      products = product_id && quantity ? [{ product_id, quantity }] : [];
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({
+        status: false,
+        msg: "Debe enviar productos válidos",
+      });
     }
 
-    if (products.length === 0) {
-      return res.status(400).json({ message: "Debe enviar al menos un producto válido" });
-    }
-
-    // 1️⃣ Crear orden principal
+    // ============================
+    // 1️⃣ CREAR ORDEN
+    // ============================
     const order = await Order.create(
-      { date, state, due_date, client_id, location_id, user_creates_id, total_price: 0 },
+      {
+        date,
+        due_date,
+        state,
+        client_id,
+        location_id,
+        user_creates_id,
+        total_price: 0,
+      },
       { transaction: t }
     );
 
     let totalPrice = 0;
 
-    // 2️⃣ Procesar productos
+    // ============================
+    // 2️⃣ GUARDAR PRODUCTOS Y STOCK
+    // ============================
     for (const item of products) {
-      const product = await Product.findByPk(item.product_id, { transaction: t });
-      if (!product) throw new Error(`Producto con ID ${item.product_id} no encontrado`);
+      const product = await Product.findByPk(item.product_id, {
+        transaction: t,
+      });
 
-    const unitPrice = Number(item.unit_price ?? product.sale_price);
-const lineTotal = unitPrice * item.quantity;
+      if (!product) throw new Error("Producto no encontrado");
 
+      const qty = Number(item.quantity);
 
-      // Crear línea pivote
+      if (product.quantity < qty) {
+        throw new Error(`Stock insuficiente para ${product.name}`);
+      }
+
+      const unitPrice = Number(item.unit_price ?? product.sale_price);
+      const lineTotal = qty * unitPrice;
+
       await OrderProduct.create(
         {
           order_id: order.id,
           product_id: product.id,
-          quantity: item.quantity,
+          quantity: qty,
           unit_price: unitPrice,
-          total: lineTotal
+          total: lineTotal,
         },
         { transaction: t }
       );
 
-      // Stock general
-      await product.update(
-        { quantity: Math.max(product.quantity - item.quantity, 0) },
-        { transaction: t }
-      );
+      product.quantity -= qty;
+      await product.save({ transaction: t });
 
-      // Stock por ubicación
-      const locationProduct = await LocationProduct.findOne({
+      const locProd = await LocationProduct.findOne({
         where: { product_id: product.id, location_id },
         transaction: t,
       });
 
-      if (locationProduct) {
-        await locationProduct.update(
-          { stock: Math.max(locationProduct.stock - item.quantity, 0) },
-          { transaction: t }
-        );
+      if (!locProd || locProd.stock < qty) {
+        throw new Error(`Stock insuficiente en ubicación para ${product.name}`);
       }
+
+      locProd.stock -= qty;
+      await locProd.save({ transaction: t });
 
       totalPrice += lineTotal;
     }
 
-    // 3️⃣ Actualizar total de la orden
+    // ============================
+    // 3️⃣ ACTUALIZAR TOTAL ORDEN
+    // ============================
     await order.update({ total_price: totalPrice }, { transaction: t });
 
-    // 4️⃣ Crear salidas automáticas
-    const estadoUpper = state?.toUpperCase() || "";
-    if (["IN_PROGRESS", "DELIVERED", "EN CAMINO", "DESPACHADO"].includes(estadoUpper)) {
-      const clientData = await Client.findByPk(client_id, { transaction: t });
-      const clientName = clientData ? clientData.name : "Cliente no especificado";
+    // ============================
+    // 🔎 BUSCAR CLIENTE
+    // ============================
+    const client = client_id
+      ? await Client.findByPk(client_id, { transaction: t })
+      : null;
 
-      for (const item of products) {
-        const product = await Product.findByPk(item.product_id, {
-          attributes: ["id", "code", "name", "sale_price"],
-          transaction: t,
-        });
+    // ============================
+    // 4️⃣ CREAR OPERATION
+    // ============================
+    const operation = await Operation.create(
+      {
+        date: new Date(),
 
-        if (!product || !product.code) continue;
+        // ✅ DESCRIPCIÓN PROFESIONAL
+        description: `Venta de mercancía – Orden #${order.id} – ${client?.name || "Cliente no definido"}`,
 
-        const salePrice = Number(product.sale_price ?? 0);
-        const uniqueCode = `${product.code}-${order.id}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        type: "SALE",
+        total: totalPrice,
+        amount: totalPrice,
+        user: user_creates_id ?? "Sistema",
+        location_id,
+        order_id: order.id,
+        is_active: true,
+      },
+      { transaction: t }
+    );
 
-        await Out.create(
-          {
-            order_id: order.id,
-            code_product: uniqueCode,
-            product_id: product.id,
-            location_id,
-            date: date || new Date(),
-            client: clientName,
-            user: user_creates_id ?? "Sistema",
-            quantity: item.quantity,
-            salePrice,
-            totalPrice: salePrice * item.quantity,
-            is_active: true,
-          },
-          { transaction: t }
-        );
-      }
-    }
+    // ============================
+    // 5️⃣ OPERATION DETAILS
+    // ============================
+    for (const item of products) {
+      const product = await Product.findByPk(item.product_id, {
+        transaction: t,
+      });
 
-    // =============================
-    // 5️⃣ CREAR OPERACIÓN CORRECTA
-    // =============================
+      const unitPrice = Number(item.unit_price ?? product.sale_price);
 
-    const validTotalPrice = Number(totalPrice) || 0;
-
-    // Última operación del sistema
-    const lastOperationGeneral = await Operation.findOne({
-      order: [["created_at", "DESC"]],
-      transaction: t,
-    });
-
-    const previousBalance = lastOperationGeneral ? Number(lastOperationGeneral.balance) : 0;
-
-    // Buscar operación existente de esta orden
-    const lastOperationOrder = await Operation.findOne({
-      where: { description: `Venta de orden #${order.id}` },
-      transaction: t,
-    });
-
-    if (lastOperationOrder) {
-      // Actualizar si existe
-      await lastOperationOrder.update(
+      await OperationDetail.create(
         {
-          salePrice: validTotalPrice,
-          outcome: validTotalPrice,
-          total: validTotalPrice,
-          balance: previousBalance - validTotalPrice,
-          updated_at: new Date(),
-          user_updates_id: user_creates_id,
-        },
-        { transaction: t }
-      );
-    } else {
-      // Crear si no existe
-      await Operation.create(
-        {
-          date: new Date(),
-          description: `Venta de orden #${order.id}`,
-          type: "OUTCOME",
-          quantity: 1,
+          operation_id: operation.id,
+          product_id: product.id,
+          quantity: Number(item.quantity),
+          salePrice: unitPrice,
           purchasePrice: 0,
-          salePrice: validTotalPrice,
-          outcome: validTotalPrice,
-          total: validTotalPrice,
-          user: user_creates_id ?? "Sistema",
-          balance: previousBalance - validTotalPrice,
-          user_creates_id,
+          type: "SALE",
           is_active: true,
         },
         { transaction: t }
       );
     }
 
-    // 6️⃣ Crear movimientos (Tx)
-    const orderWithProducts = await Order.findByPk(order.id, {
-      include: [
-        {
-          model: Product,
-          as: "products",
-          attributes: ["id", "name", "code"],
-          through: { attributes: ["quantity"] },
-        },
-      ],
-      transaction: t,
-    });
+    // ============================
+    // 6️⃣ CONTABILIDAD
+    // ============================
+    await createJournalsFromOperation(operation, t);
 
-    await createMovementFromOrder(
-      {
-        id: orderWithProducts.id,
-        user: user_creates_id,
-        products: orderWithProducts.products,
-        state: order.state,
-      },
-      t
-    );
-
-    // 7️⃣ Confirmar transacción
     await t.commit();
-
-    // 8️⃣ Recargar orden completa
-    const fullOrder = await Order.findByPk(order.id, {
-      include: [
-        { model: Client, as: "client" },
-        { model: Location, as: "location" },
-        {
-          model: Product,
-          as: "products",
-          through: { attributes: ["quantity", "unit_price", "total"] },
-        },
-      ],
-    });
-
-    const productsForEdit = fullOrder.products.map(p => ({
-      ...p.toJSON(),
-      total: p.OrderProduct.total || (p.OrderProduct.quantity * p.OrderProduct.unit_price),
-    }));
 
     return res.status(201).json({
       status: true,
-      message: "Orden creada exitosamente",
-      order: {
-        ...fullOrder.toJSON(),
-        products: productsForEdit,
-        total_price: totalPrice,
-      },
+      msg: "Orden creada con operación y kardex ✅",
+      order,
+      operation,
     });
 
   } catch (error) {
-    await t.rollback();
+    if (!t.finished) await t.rollback();
+
     console.error("❌ Error creando orden:", error);
 
     return res.status(500).json({
       status: false,
-      message: error.message || "Ocurrió un error inesperado al crear la orden",
+      msg: error.message,
     });
   }
 };
@@ -426,34 +378,47 @@ const lineTotal = unitPrice * item.quantity;
 =========================================================== */
 const update = async (req, res) => {
   const t = await sequelize.transaction();
+
   try {
     const { id } = req.params;
     const { state, products, location_id, user_creates_id } = req.body;
 
+    /* ======================================
+       1️⃣ TRAER ORDEN ACTUAL CON PRODUCTOS
+    ======================================= */
     const order = await Order.findByPk(id, {
       include: [
-        { model: Product, as: "products" }
+        {
+          model: Product,
+          as: "products",
+          through: { attributes: ["quantity", "unit_price", "total"] },
+        },
       ],
       transaction: t,
     });
 
     if (!order) throw new Error("Orden no encontrada");
 
+    const previousState = order.state;
+
     /* ======================================
-       1️⃣ REPOSICIÓN DE STOCK ANTES DE CAMBIAR
+       2️⃣ REPONER STOCK ANTERIOR (ANTES DE EDITAR)
     ======================================= */
-    for (const old of order.products) {
-      const prevQty = old.OrderProduct.quantity;
+    for (const oldProduct of order.products) {
+      const prevQty = oldProduct.OrderProduct.quantity;
 
       // Stock general
-      await old.update(
-        { quantity: old.quantity + prevQty },
+      await oldProduct.update(
+        { quantity: oldProduct.quantity + prevQty },
         { transaction: t }
       );
 
       // Stock por ubicación
       const locProd = await LocationProduct.findOne({
-        where: { product_id: old.id, location_id: order.location_id },
+        where: {
+          product_id: oldProduct.id,
+          location_id: order.location_id,
+        },
         transaction: t,
       });
 
@@ -466,35 +431,40 @@ const update = async (req, res) => {
     }
 
     /* ======================================
-       2️⃣ ACTUALIZAR ESTADO
+       3️⃣ ACTUALIZAR ESTADO SI VIENE
     ======================================= */
     if (state) {
       await order.update({ state }, { transaction: t });
     }
 
     /* ======================================
-       3️⃣ REEMPLAZAR PRODUCTOS Y RECALCULAR TOTAL
+       4️⃣ REEMPLAZAR PRODUCTOS Y RECALCULAR TOTAL
     ======================================= */
     let totalPrice = 0;
 
     if (products?.length) {
-      await OrderProduct.destroy({ where: { order_id: id }, transaction: t });
+      // eliminar pivote anterior
+      await OrderProduct.destroy({
+        where: { order_id: id },
+        transaction: t,
+      });
 
+      // recorrer nuevos productos
       for (const item of products) {
         const product = await Product.findByPk(item.product_id, {
-          attributes: ["id", "sale_price", "quantity"],
+          attributes: ["id", "sale_price", "purchasePrice", "quantity"],
           transaction: t,
         });
 
         if (!product)
           throw new Error(`Producto ${item.product_id} no encontrado`);
 
-       const unitPrice = Number(item.unit_price ?? product.sale_price);
-
+        const unitPrice = Number(item.unit_price ?? product.sale_price);
         const lineTotal = unitPrice * item.quantity;
+
         totalPrice += lineTotal;
 
-        // Crear pivote
+        // crear pivote nuevo
         await OrderProduct.create(
           {
             order_id: id,
@@ -506,90 +476,154 @@ const update = async (req, res) => {
           { transaction: t }
         );
 
-        // Stock general
+        // descontar stock general
         await product.update(
-          { quantity: Math.max(product.quantity - item.quantity, 0) },
+          { quantity: product.quantity - item.quantity },
           { transaction: t }
         );
 
-        // Stock por ubicación
-        if (location_id) {
-          const locationProduct = await LocationProduct.findOne({
-            where: { product_id: product.id, location_id },
-            transaction: t,
-          });
+        // descontar stock por ubicación
+        const locProd = await LocationProduct.findOne({
+          where: { product_id: product.id, location_id },
+          transaction: t,
+        });
 
-          if (locationProduct) {
-            await locationProduct.update(
-              { stock: Math.max(locationProduct.stock - item.quantity, 0) },
-              { transaction: t }
-            );
-          }
+        if (locProd) {
+          await locProd.update(
+            { stock: locProd.stock - item.quantity },
+            { transaction: t }
+          );
         }
       }
 
-      // Actualizar total de la orden
-      await order.update({ total_price: totalPrice }, { transaction: t });
+      // actualizar total orden
+      await order.update(
+        { total_price: totalPrice },
+        { transaction: t }
+      );
     }
 
     /* ======================================
-       4️⃣ OPERACIÓN FINANCIERA
+       5️⃣ OPERACIÓN ÚNICA PARA KARDEX (SALE)
     ======================================= */
-    const existingOp = await Operation.findOne({
-      where: { description: `Venta de orden #${id}` },
+
+    // Buscar operación existente
+    let operation = await Operation.findOne({
+      where: { order_id: id },
       transaction: t,
     });
 
-    const validTotal = Number(totalPrice) || order.total_price || 0;
-
-    if (existingOp) {
-      // Volver a calcular balance REAL
-      const lastOp = await Operation.findOne({
-        order: [["created_at", "DESC"]],
-        transaction: t,
-      });
-
-      const previousBalance = lastOp ? Number(lastOp.balance) : 0;
-
-      await existingOp.update(
-        {
-          salePrice: validTotal,
-          outcome: validTotal,
-          total: validTotal,
-          balance: previousBalance - validTotal,
-        },
-        { transaction: t }
-      );
-    } else {
-      const lastOp = await Operation.findOne({
-        order: [["created_at", "DESC"]],
-        transaction: t,
-      });
-
-      const previousBalance = lastOp ? Number(lastOp.balance) : 0;
-
-      await Operation.create(
+    // Si no existe, crearla
+    if (!operation) {
+      operation = await Operation.create(
         {
           date: new Date(),
           description: `Venta de orden #${id}`,
-          quantity: 1,
-          salePrice: validTotal,
-          purchasePrice: 0,
-          outcome: validTotal,
-          type: "OUTCOME",
-          total: validTotal,
-          balance: previousBalance - validTotal,
+          type: "SALE", // ✅ correcto según ENUM
+          total: totalPrice,
+          amount: totalPrice,
+          location_id,
+          order_id: id,
+          user: "admin@prueba.com",
           user_creates_id,
           is_active: true,
         },
         { transaction: t }
       );
+    } else {
+      // actualizar operación existente
+      await operation.update(
+        {
+          total: totalPrice,
+          amount: totalPrice,
+          type: "SALE",
+          location_id,
+        },
+        { transaction: t }
+      );
     }
 
+    /* ======================================
+       6️⃣ RECREAR OPERATION DETAILS (KARDEX)
+    ======================================= */
+
+    // eliminar detalles anteriores
+    await OperationDetail.destroy({
+      where: { operation_id: operation.id },
+      transaction: t,
+    });
+
+    // crear detalles nuevos por producto
+    for (const item of products) {
+      await OperationDetail.create(
+        {
+          operation_id: operation.id,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          type: "SALE",
+        },
+        { transaction: t }
+      );
+    }
+
+    /* ======================================
+       7️⃣ COSTO CONTABLE SOLO AL ENTREGAR
+    ======================================= */
+    if (
+      previousState !== "DELIVERED" &&
+      ["DELIVERED", "DESPACHADO"].includes(order.state)
+    ) {
+      const orderWithProducts = await Order.findByPk(order.id, {
+        include: [
+          {
+            model: Product,
+            as: "products",
+            attributes: ["id", "purchasePrice"],
+            through: { attributes: ["quantity"] },
+          },
+        ],
+        transaction: t,
+      });
+
+      for (const item of orderWithProducts.products) {
+        const costTotal =
+          item.OrderProduct.quantity * item.purchasePrice;
+
+        // crear operación tipo ADJUST (costo)
+        const operationCost = await Operation.create(
+          {
+            date: new Date(),
+            description: `Costo de orden #${order.id}`,
+            type: "ADJUST",
+            total: costTotal,
+            amount: costTotal,
+            location_id,
+            order_id: id,
+            user: "Sistema",
+            is_active: true,
+          },
+          { transaction: t }
+        );
+
+        // asiento contable
+        await createJournalsFromOperation(
+          {
+            id: operationCost.id,
+            type: "ADJUST",
+            total: costTotal,
+          },
+          t
+        );
+      }
+    }
+
+    /* ======================================
+       8️⃣ COMMIT
+    ======================================= */
     await t.commit();
 
     /* ======================================
-       5️⃣ DEVOLVER ORDEN COMPLETA
+       9️⃣ RESPUESTA FINAL
     ======================================= */
     const fullOrder = await Order.findByPk(id, {
       include: [
@@ -603,23 +637,19 @@ const update = async (req, res) => {
       ],
     });
 
-    const productsForEdit = fullOrder.products.map(p => ({
-      ...p.toJSON(),
-      total: p.OrderProduct.total,
-    }));
-
     res.status(200).json({
-      message: "Orden actualizada correctamente",
-      order: {
-        ...fullOrder.toJSON(),
-        products: productsForEdit,
-      },
+      message: "✅ Orden actualizada correctamente",
+      order: fullOrder,
     });
 
   } catch (error) {
-    await t.rollback();
+    if (!t.finished) await t.rollback();
+
     console.error("❌ Error al actualizar orden:", error);
-    res.status(500).json({ message: error.message });
+
+    res.status(500).json({
+      message: error.message,
+    });
   }
 };
 
@@ -648,7 +678,9 @@ const destroy = async (req, res) => {
     await t.commit();
     res.status(200).json({ message: "Orden y salidas eliminadas correctamente" });
   } catch (error) {
+  if (!t.finished) {
     await t.rollback();
+  }
     console.error("❌ Error al eliminar orden:", error);
     res.status(500).json({
       message: "No se pudo eliminar la orden. Puede tener productos asociados o un error de base de datos.",

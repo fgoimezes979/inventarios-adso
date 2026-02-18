@@ -1,27 +1,19 @@
-const express = require("express")
-const{  Router} = require("express");
+const { Router } = require("express");
 const router = Router();
- 
-/**importar los metodos del controlador */
+const authMiddleware = require("../../../middlewares/auth.middleware");
 
-const {index, create, show, update, destroy} = require("../../../controllers/parameters/locations/location.controllers");
+/** importar los metodos del controlador */
+const { index, create, show, update, destroy } =
+require("../../../controllers/parameters/locations/location.controllers");
 
-/**ruta para el metodo index */
-router.get("/" , index);
+/** proteger todas las rutas */
+router.use(authMiddleware);
 
-/**ruta para el meatodo create */
+/** rutas */
+router.get("/", index);
+router.post("/", create);
+router.get("/:id", show);
+router.put("/:id", update);
+router.delete("/:id", destroy);
 
-router.post("/" , create);
-/**ruta para el metodo show */
-
-router.get("/:id" , show);
-/**ruta para actualizar un locationo */
-
-router.put("/:id" , update);
-/**ruta para elimunar un locationo */
-
-router.delete("/:id" , destroy);
-
-
-/**exportamos el modulo */
 module.exports = router;

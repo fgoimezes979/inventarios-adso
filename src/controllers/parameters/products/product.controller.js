@@ -125,7 +125,8 @@ const create = async (req, res) => {
       quantity,
       purchasePrice,
       salePrice,
-      supplierId: supplierId || null,
+      supplier_id: supplierId || null,
+
       image,
       isActive: isActive ?? true
     });
@@ -197,13 +198,40 @@ const show = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const product = await Product.findByPk(id);
 
+    const {
+      name,
+      category,
+      quantity,
+      purchasePrice,
+      salePrice,
+      supplierId,
+      image,
+      isActive
+    } = req.body;
+
+    const product = await Product.findByPk(id);
     if (!product) {
-      return res.status(404).json({ status: false, msg: "Producto a actualizar no encontrado", product: null });
+      return res.status(404).json({
+        status: false,
+        msg: "Producto a actualizar no encontrado",
+        product: null,
+      });
     }
 
-    await Product.update(req.body, { where: { id } });
+    await Product.update(
+      {
+        name,
+        category,
+        quantity,
+       purchasePrice,
+        salePrice,
+        supplier_id, 
+        image,
+        isActive
+      },
+      { where: { id } }
+    );
 
     const productUpdated = await Product.findByPk(id, {
       include: [
@@ -212,10 +240,19 @@ const update = async (req, res) => {
       ],
     });
 
-    return res.status(200).json({ status: true, msg: "Producto actualizado correctamente", product: productUpdated });
+    return res.status(200).json({
+      status: true,
+      msg: "Producto actualizado correctamente",
+      product: productUpdated,
+    });
+
   } catch (error) {
     console.error("❌ Error al actualizar producto:", error);
-    return res.status(500).json({ status: false, msg: "Error interno al actualizar producto", product: null });
+    return res.status(500).json({
+      status: false,
+      msg: "Error interno al actualizar producto",
+      product: null,
+    });
   }
 };
 

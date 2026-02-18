@@ -3,16 +3,23 @@ const sequelize = require("../../database/dbconnection");
 
 class Entry extends Model {
   static associate(models) {
-    // Una entrada pertenece a un producto
-    this.belongsTo(models.Product, {
-      foreignKey: "product_id",
-      as: "product",
-    });
 
-    // Una entrada pertenece a una ubicación
+    // ✅ Entry pertenece a Location
     this.belongsTo(models.Location, {
       foreignKey: "location_id",
       as: "location",
+    });
+
+    // ✅ Entry tiene muchos detalles
+    this.hasMany(models.EntryDetail, {
+      foreignKey: "entry_id",
+      as: "details",
+    });
+
+    // ✅ Entry pertenece a Supplier
+    this.belongsTo(models.Supplier, {
+      foreignKey: "supplier_id",
+      as: "supplier",
     });
   }
 }
@@ -23,41 +30,50 @@ Entry.init(
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
-      allowNull: false,
     },
-    code_product: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
-    product_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    quantity: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-    },
-    date: {
-      type: DataTypes.DATE,
-      allowNull: false,
-    },
+
     location_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+
+    supplier_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+
+    invoice_number: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+
+    total: {
+  type: DataTypes.DECIMAL(12,2),
+  allowNull: false,
+  defaultValue: 0
+   },
+
+
+    date: {
+      type: DataTypes.DATE,
+      allowNull: false,
+    },
+
     user: {
       type: DataTypes.STRING,
       allowNull: false,
     },
+
     is_active: {
       type: DataTypes.BOOLEAN,
-      allowNull: false,
       defaultValue: true,
     },
+
     user_creates_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+
     user_updates_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -68,8 +84,7 @@ Entry.init(
     modelName: "Entry",
     tableName: "entries",
     timestamps: true,
-    createdAt: "created_at",
-    updatedAt: "updated_at",
+    underscored: true,
   }
 );
 

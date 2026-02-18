@@ -1,22 +1,31 @@
-const express = require("express");
-const { Router } = require("express");
-const router = Router();
+const router = require("express").Router();
+const authMiddleware = require("../../../middlewares/auth.middleware");
 
 /** Importar los métodos del controlador de órdenes */
-const { index, create, show, update, destroy } = require("../../../controllers/parameters/orders/order.controller");
+const { index, create, show, update, destroy } =
+require("../../../controllers/parameters/orders/order.controller");
 
-/** ✅ Importar la función getProductsByLocation desde el controlador de productos */
-const { getProductsByLocation } = require("../../../controllers/parameters/products/product.controller");
+/** Importar la función getProductsByLocation */
+const { getProductsByLocation } =
+require("../../../controllers/parameters/products/product.controller");
 
-/** Rutas principales */
+/** 🔐 Proteger todas las rutas */
+router.use(authMiddleware);
+
+/** 🔹 Rutas principales */
+
+// Obtener lista de órdenes
 router.get("/", index);
+
+// Crear nueva orden
 router.post("/", create);
+
+// Obtener productos por ubicación
+router.get("/location/:location_id/products", getProductsByLocation);
+
+// Operaciones sobre una orden específica
 router.get("/:id", show);
 router.put("/:id", update);
 router.delete("/:id", destroy);
 
-/** 🔹 Nueva ruta: obtener productos según la ubicación seleccionada */
-router.get("/location/:location_id/products", getProductsByLocation);
-
-/** Exportar el módulo */
 module.exports = router;

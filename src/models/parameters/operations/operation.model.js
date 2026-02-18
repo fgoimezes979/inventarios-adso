@@ -1,7 +1,28 @@
 const { Model, DataTypes } = require("sequelize");
 const sequelize = require("../../database/dbconnection");
 
-class Operation extends Model {}
+class Operation extends Model {
+  static associate(models) {
+
+    // ✅ Operation tiene muchos productos (detalles)
+    this.hasMany(models.OperationDetail, {
+      foreignKey: "operation_id",
+      as: "details",
+    });
+
+    // ✅ Operation puede estar asociada a una factura (Entry)
+    this.belongsTo(models.Entry, {
+      foreignKey: "entry_id",
+      as: "entry",
+    });
+
+    // ✅ Operation pertenece a una ubicación
+    this.belongsTo(models.Location, {
+      foreignKey: "location_id",
+      as: "location",
+    });
+  }
+}
 
 Operation.init(
   {
@@ -9,16 +30,16 @@ Operation.init(
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
-      allowNull: false,
     },
 
     date: {
       type: DataTypes.DATE,
       allowNull: false,
+      defaultValue: DataTypes.NOW,
     },
 
     description: {
-      type: DataTypes.STRING(100),
+      type: DataTypes.STRING(150),
       allowNull: true,
     },
 
@@ -27,35 +48,42 @@ Operation.init(
       allowNull: true,
     },
 
-    // 🟢 Precio de compra (solo ENTRADAS)
-    purchasePrice: {
-      type: DataTypes.DECIMAL(10, 2),
+    // ✅ Tipo de operación
+    type: {
+      type: DataTypes.ENUM(
+        "ENTRY",
+        "SALE",
+        "ADJUST",
+        "RETURN",
+        "TRANSFER"
+      ),
+      allowNull: false,
+    },
+
+    // ✅ Total general del movimiento (Factura completa)
+    total: {
+      type: DataTypes.DECIMAL(14, 2),
       allowNull: false,
       defaultValue: 0,
     },
 
-    // 🟢 Precio de venta (solo SALIDAS)
-    salePrice: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: false,
-      defaultValue: 0,
+    amount: {
+  type: DataTypes.DECIMAL(14,2),
+  allowNull: false,
+  defaultValue: 0,
     },
 
-    quantity: {
+
+    // ✅ Ubicación obligatoria
+    location_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      validate: { min: 1 },
     },
 
-    type: {
-      type: DataTypes.ENUM("INCOME", "OUTCOME"),
-      allowNull: false,
-    },
-
-    balance: {
-      type: DataTypes.DECIMAL(10, 2),
+    // ✅ Referencia opcional a Entry (Factura)
+    entry_id: {
+      type: DataTypes.INTEGER,
       allowNull: true,
-      defaultValue: 0,
     },
 
     is_active: {
@@ -78,27 +106,7 @@ Operation.init(
     modelName: "Operation",
     tableName: "operations",
     timestamps: true,
-    createdAt: "created_at",
-    updatedAt: "updated_at",
-
-    getterMethods: {
-      income() {
-        return this.type === "INCOME"
-          ? Number(this.purchasePrice) * Number(this.quantity)
-          : 0;
-      },
-
-      outcome() {
-        return this.type === "OUTCOME"
-          ? Number(this.salePrice) * Number(this.quantity)
-          : 0;
-      },
-
-      total() {
-        return Number(this.type === "INCOME" ? this.purchasePrice : this.salePrice)
-          * Number(this.quantity);
-      },
-    },
+    underscored: true,
   }
 );
 

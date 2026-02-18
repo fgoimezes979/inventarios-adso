@@ -61,6 +61,19 @@ router.use("/parameters/txs", txRouter);
 const orderRouter = require("./parameters/orders/order.routes");
 router.use("/parameters/orders", orderRouter);
 
+// --- Controlador contable: journals ---
+const journalRouter = require("./accounting/journal.routes");
+router.use("/accounting/journals", journalRouter); // 🔹 Asegurarse del /api si Angular lo usa
+
+/// --- RUTAS DE REPORTES ---
+const reportsRouter = require("./parameters/reports/report.routes");
+router.use("/parameters/reports", reportsRouter); // ✅ Correcto
+
+
+
+
+
+
 
 
 /**exportar el modulo */

@@ -66,6 +66,15 @@ User.init(
       comment: "contraseña del usuario"
     },
 
+    /** Rol del usuario */
+role: {
+  type: DataTypes.STRING(20),
+  allowNull: false,
+  defaultValue: 'USER',
+  comment: 'rol del usuario (ADMIN, VENDEDOR, USER)'
+},
+
+
     /** Estado activo/inactivo */
     is_active: {
       type: DataTypes.BOOLEAN,
@@ -84,6 +93,7 @@ User.init(
       type: DataTypes.DATE,
       allowNull: false
     },
+
 
     /** Usuario que actualiza */
     user_updates_id: {

@@ -56,10 +56,11 @@ Tx.init({
     type: DataTypes.INTEGER,
     allowNull: true
   },
-  type: {
-    type: DataTypes.STRING(50),
-    allowNull: true // "Entrada" o "Salida"
-  }
+ type: {
+  type: DataTypes.STRING,
+  allowNull: false,
+  defaultValue: "ENTRY"
+}
 
 }, {
   sequelize,
