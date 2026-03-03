@@ -201,12 +201,14 @@ const getProductsByLocation = async (req, res) => {
 
 
 
-// CREAR ORDEN
+
 // CREAR ORDEN
 const create = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
+    console.log("📥 BODY RECIBIDO EN ORDEN:", req.body);
+
     const {
       products,
       state,
@@ -235,17 +237,23 @@ const create = async (req, res) => {
         client_id,
         location_id,
         user_creates_id,
+        subtotal: 0,
+        tax: 0,
         total_price: 0,
       },
       { transaction: t }
     );
 
-    let totalPrice = 0;
+    let totalSubtotal = 0;
+    let totalTax = 0;
+    let totalInvoice = 0;
+    let totalCost = 0;
 
     // ============================
     // 2️⃣ GUARDAR PRODUCTOS Y STOCK
     // ============================
     for (const item of products) {
+
       const product = await Product.findByPk(item.product_id, {
         transaction: t,
       });
@@ -259,7 +267,19 @@ const create = async (req, res) => {
       }
 
       const unitPrice = Number(item.unit_price ?? product.sale_price);
-      const lineTotal = qty * unitPrice;
+
+      // 🔹 SUBTOTAL
+      const lineSubtotal = qty * unitPrice;
+
+      // 🔹 IVA DINÁMICO
+      const taxRate = Number(product.taxRate ?? 0);
+      const lineTax = lineSubtotal * (taxRate / 100);
+
+      // 🔹 TOTAL LÍNEA
+      const lineTotal = lineSubtotal + lineTax;
+
+      // 🔹 COSTO (para asiento costo venta)
+      const cost = Number(product.purchase_price) * qty;
 
       await OrderProduct.create(
         {
@@ -272,9 +292,11 @@ const create = async (req, res) => {
         { transaction: t }
       );
 
+      // 🔹 DESCONTAR STOCK GENERAL
       product.quantity -= qty;
       await product.save({ transaction: t });
 
+      // 🔹 DESCONTAR STOCK POR UBICACIÓN
       const locProd = await LocationProduct.findOne({
         where: { product_id: product.id, location_id },
         transaction: t,
@@ -287,68 +309,71 @@ const create = async (req, res) => {
       locProd.stock -= qty;
       await locProd.save({ transaction: t });
 
-      totalPrice += lineTotal;
+      // 🔹 ACUMULAR TOTALES
+      totalSubtotal += lineSubtotal;
+      totalTax += lineTax;
+      totalInvoice += lineTotal;
+      totalCost += cost;
     }
 
     // ============================
-    // 3️⃣ ACTUALIZAR TOTAL ORDEN
+    // 3️⃣ ACTUALIZAR TOTALES ORDEN
     // ============================
-    await order.update({ total_price: totalPrice }, { transaction: t });
-
-    // ============================
-    // 🔎 BUSCAR CLIENTE
-    // ============================
-    const client = client_id
-      ? await Client.findByPk(client_id, { transaction: t })
-      : null;
-
-    // ============================
-    // 4️⃣ CREAR OPERATION
-    // ============================
-    const operation = await Operation.create(
+    await order.update(
       {
-        date: new Date(),
-
-        // ✅ DESCRIPCIÓN PROFESIONAL
-        description: `Venta de mercancía – Orden #${order.id} – ${client?.name || "Cliente no definido"}`,
-
-        type: "SALE",
-        total: totalPrice,
-        amount: totalPrice,
-        user: user_creates_id ?? "Sistema",
-        location_id,
-        order_id: order.id,
-        is_active: true,
+        subtotal: totalSubtotal,
+        tax: totalTax,
+        total_price: totalInvoice,
       },
       { transaction: t }
     );
 
     // ============================
-    // 5️⃣ OPERATION DETAILS
+    // 4️⃣ CREAR OPERATION
     // ============================
-    for (const item of products) {
-      const product = await Product.findByPk(item.product_id, {
-        transaction: t,
-      });
+    const operation = await Operation.create(
+{
+  date: new Date(),
+  description: `Venta de mercancía – Orden #${order.id}`,
+  type: "SALE",
 
-      const unitPrice = Number(item.unit_price ?? product.sale_price);
+  base_amount: totalSubtotal,   // 🔥 aquí está el cambio
+  tax_amount: totalTax,         // 🔥 aquí está el cambio
+  total: totalInvoice,
+  amount: totalInvoice,
 
-      await OperationDetail.create(
-        {
-          operation_id: operation.id,
-          product_id: product.id,
-          quantity: Number(item.quantity),
-          salePrice: unitPrice,
-          purchasePrice: 0,
-          type: "SALE",
-          is_active: true,
-        },
-        { transaction: t }
-      );
-    }
+  user: user_creates_id ?? "Sistema",
+  location_id,
+  order_id: order.id,
+  is_active: true,
+},
+{ transaction: t }
+);
 
+// ============================
+// 5️⃣ CREAR OPERATION DETAILS
+// ============================
+for (const item of products) {
+
+  const product = await Product.findByPk(item.product_id, {
+    transaction: t,
+  });
+
+  await OperationDetail.create(
+    {
+      operation_id: operation.id,
+      product_id: product.id,
+      quantity: item.quantity,
+      sale_price: item.unit_price ?? product.sale_price,
+      purchase_price: product.purchase_price,
+      type: "SALE",
+      is_active: true,
+    },
+    { transaction: t }
+  );
+}
     // ============================
-    // 6️⃣ CONTABILIDAD
+    // 5️⃣ CONTABILIDAD
     // ============================
     await createJournalsFromOperation(operation, t);
 
@@ -356,7 +381,7 @@ const create = async (req, res) => {
 
     return res.status(201).json({
       status: true,
-      msg: "Orden creada con operación y kardex ✅",
+      msg: "Orden creada con IVA y contabilidad automática ✅",
       order,
       operation,
     });
@@ -372,7 +397,6 @@ const create = async (req, res) => {
     });
   }
 };
-
 /* ===========================================================
    ✏️ ACTUALIZAR ORDEN (con stock correcto + totales correctos)
 =========================================================== */

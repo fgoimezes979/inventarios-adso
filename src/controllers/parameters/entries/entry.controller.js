@@ -114,7 +114,6 @@ const create = async (req, res) => {
     const { location_id, supplier_id, invoice_number, items, date } = req.body;
     const loggedUser = req.user || { id: 1, email: "admin@prueba.com" };
 
-    // ✅ Validación inicial
     if (!location_id || !invoice_number || !items?.length) {
       await t.rollback();
       return res.status(400).json({
@@ -123,22 +122,19 @@ const create = async (req, res) => {
       });
     }
 
-    // ==================================================
-    // 🔎 BUSCAR PROVEEDOR PARA DESCRIPCIÓN
-    // ==================================================
     const supplier = supplier_id
       ? await Supplier.findByPk(supplier_id, { transaction: t })
       : null;
 
-    // ==================================================
-    // 1️⃣ CREAR FACTURA (ENTRY HEADER)
-    // ==================================================
+    // ===============================
+    // 1️⃣ CREAR CABECERA
+    // ===============================
     const entryHeader = await Entry.create(
       {
         location_id,
         supplier_id,
         invoice_number,
-       date: new Date(),
+        date: date ? new Date(date) : new Date(),
         user: loggedUser.email,
         is_active: true,
         user_creates_id: loggedUser.id,
@@ -147,19 +143,15 @@ const create = async (req, res) => {
       { transaction: t }
     );
 
-    let totalCost = 0;
-
-    // ==================================================
-    // 2️⃣ CREAR OPERACIÓN PRINCIPAL (UNA SOLA)
-    // ==================================================
+    // ===============================
+    // 2️⃣ CREAR OPERACIÓN
+    // ===============================
     const operation = await Operation.create(
       {
-        date: new Date(),
-
-
-        // ✅ DESCRIPCIÓN PROFESIONAL
-        description: `Entrada de mercancía – Factura #${invoice_number} – ${supplier?.name || "Proveedor no definido"}`,
-
+        date: date ? new Date(date) : new Date(),
+        description: `Entrada de mercancía – Factura #${invoice_number} – ${
+          supplier?.name || "Proveedor no definido"
+        }`,
         user: loggedUser.email,
         type: "ENTRY",
         total: 0,
@@ -172,10 +164,18 @@ const create = async (req, res) => {
       { transaction: t }
     );
 
-    // ==================================================
-    // 3️⃣ LOOP ÚNICO → ENTRY_DETAIL + OPERATION_DETAIL + STOCK
-    // ==================================================
+    // ===============================
+    // 3️⃣ VARIABLES ACUMULADORAS
+    // ===============================
+    let totalCost = 0;   // Base inventario
+    let totalTax = 0;    // IVA descontable
+    let grandTotal = 0;  // Total factura
+
+    // ===============================
+    // 4️⃣ LOOP PRODUCTOS
+    // ===============================
     for (const item of items) {
+
       const { product_id, quantity } = item;
 
       if (!product_id || Number(quantity) <= 0) {
@@ -186,10 +186,16 @@ const create = async (req, res) => {
         });
       }
 
-      // 🔎 Buscar producto
-      const product = await Product.findByPk(product_id, {
-        transaction: t,
-      });
+    const product = await Product.findByPk(product_id, {
+  attributes: [
+    "id",
+    "name",
+    "purchasePrice",
+    "taxType",
+    "taxRate"
+  ],
+  transaction: t,
+});
 
       if (!product) {
         await t.rollback();
@@ -199,7 +205,6 @@ const create = async (req, res) => {
         });
       }
 
-      // ✅ PRECIO UNITARIO
       const unitCost = item.unit_cost
         ? Number(item.unit_cost)
         : Number(product.purchasePrice || 0);
@@ -212,23 +217,38 @@ const create = async (req, res) => {
         });
       }
 
-      // ✅ SUBTOTAL
+      // 🔹 BASE
       const subtotal = Number(quantity) * unitCost;
-      totalCost += subtotal;
 
-      // ✅ ENTRY DETAIL
+      // 🔹 IVA
+      let taxAmount = 0;
+     if ((product.taxType || '').toUpperCase() === "GRAVADO") {
+  taxAmount = subtotal * (Number(product.taxRate) / 100);
+}
+      const total = subtotal + taxAmount;
+
+      // 🔹 ACUMULAR
+      totalCost += subtotal;
+      totalTax += taxAmount;
+      grandTotal += total;
+
+      // ===============================
+      // 🔹 ENTRY DETAIL
+      // ===============================
       await EntryDetail.create(
         {
           entry_id: entryHeader.id,
           product_id,
           quantity: Number(quantity),
           unit_cost: unitCost,
-          subtotal,
+          subtotal: subtotal,
         },
         { transaction: t }
       );
 
-      // ✅ OPERATION DETAIL
+      // ===============================
+      // 🔹 OPERATION DETAIL
+      // ===============================
       await OperationDetail.create(
         {
           operation_id: operation.id,
@@ -242,11 +262,12 @@ const create = async (req, res) => {
         { transaction: t }
       );
 
-      // ✅ ACTUALIZAR STOCK GLOBAL
+      // ===============================
+      // 🔹 ACTUALIZAR STOCK
+      // ===============================
       product.quantity = (product.quantity || 0) + Number(quantity);
       await product.save({ transaction: t });
 
-      // ✅ STOCK POR UBICACIÓN
       let lp = await LocationProduct.findOne({
         where: { location_id, product_id },
         transaction: t,
@@ -267,26 +288,28 @@ const create = async (req, res) => {
       }
     }
 
-    // ==================================================
-    // ✅ GUARDAR TOTAL FINAL
-    // ==================================================
+    // ===============================
+    // 5️⃣ REDONDEAR Y GUARDAR
+    // ===============================
     totalCost = Number(totalCost.toFixed(2));
+    totalTax = Number(totalTax.toFixed(2));
+    grandTotal = Number(grandTotal.toFixed(2));
 
-    entryHeader.total = totalCost;
+    entryHeader.total = grandTotal;
     await entryHeader.save({ transaction: t });
 
-    operation.total = totalCost;
-    operation.amount = totalCost;
+    operation.total = grandTotal;
+    operation.amount = grandTotal;
+    operation.base_amount = totalCost;  // 🔥 opcional recomendado
+    operation.tax_amount = totalTax;    // 🔥 opcional recomendado
+
     await operation.save({ transaction: t });
 
-    // ==================================================
-    // 4️⃣ ASIENTO CONTABLE ÚNICO
-    // ==================================================
+    // ===============================
+    // 6️⃣ ASIENTO CONTABLE
+    // ===============================
     await createJournalsFromOperation(operation, t);
 
-    // ==================================================
-    // ✅ COMMIT FINAL
-    // ==================================================
     await t.commit();
 
     return res.status(201).json({
@@ -295,8 +318,12 @@ const create = async (req, res) => {
       entry: entryHeader,
       operation,
       totalCost,
+      totalTax,
+      grandTotal
     });
+
   } catch (error) {
+
     if (!t.finished) await t.rollback();
 
     console.error("❌ Error creando entrada:", error);
@@ -307,7 +334,6 @@ const create = async (req, res) => {
     });
   }
 };
-
 /* ===========================================================
    📌 OBTENER UNA ENTRADA
 =========================================================== */

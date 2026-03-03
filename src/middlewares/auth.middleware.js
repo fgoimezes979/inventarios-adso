@@ -27,7 +27,7 @@ module.exports = (req, res, next) => {
     // 👇 MISMA CLAVE QUE LOGIN
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET || 'clave_secreta'
+      process.env.JWT_SECRET 
     );
 
     req.user = decoded;

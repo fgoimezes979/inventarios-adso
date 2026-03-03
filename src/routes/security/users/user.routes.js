@@ -12,7 +12,7 @@ const {
   show,
   update,
   destroy
-} = require("../../../controllers/parameters/security/user.controllers");
+} = require("../../../controllers/parameters/security/user.controller");
 
 /** ============================
  *  RUTA PUBLICA

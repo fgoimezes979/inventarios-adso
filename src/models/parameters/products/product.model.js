@@ -72,33 +72,51 @@ Product.init(
       allowNull: false,
       field: "sale_price",
     },
+
+    // 🔥 IVA CORRECTAMENTE DECLARADO
+    taxType: {
+      type: DataTypes.STRING,
+      field: "tax_type",
+      allowNull: false,
+      defaultValue: "GRAVADO"
+    },
+
+    taxRate: {
+      type: DataTypes.FLOAT,
+      field: "tax_rate",
+      allowNull: false,
+      defaultValue: 0
+    },
+
+    // 🔥 STOCK MÍNIMO
+    minimum_stock: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0
+    },
+
     image: {
       type: DataTypes.STRING(255),
       allowNull: true,
+    },
 
-     
-
-  // 🔥 STOCK MÍNIMO (ESTE ES EL QUE FALTABA)
-  minimum_stock: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    defaultValue: 0
-  },
-    }, 
     isActive: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,
       field: "is_active",
     },
+
     user_creates_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+
     user_updates_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+
     supplier_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -113,5 +131,4 @@ Product.init(
     updatedAt: "updated_at",
   }
 );
-
 module.exports = Product;

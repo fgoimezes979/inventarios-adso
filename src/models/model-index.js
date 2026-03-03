@@ -19,6 +19,11 @@ const Tx = require("./parameters/txs/tx.model.js");
 const LocationProduct = require("./parameters/locations/locationProduct.model.js");
 const OperationDetail = require("./parameters/operations/operationDetail.model.js");
 const JournalEntry = require("./accounting/JournalEntry.model.js");
+const InventoryMovement = require("./parameters/reports/inventoryMovement.model.js");
+const Account = require("./accounting/account.model.js");
+const Journal = require("./accounting/journal.model.js");
+const JournalDetail = require("./accounting/journalDetail.model.js");
+
 
 
 // ------------------------
@@ -198,6 +203,26 @@ Product.belongsToMany(Order, {
 JournalEntry.belongsTo(Operation, { foreignKey: "operation_id", as: "operation" });
 Operation.hasMany(JournalEntry, { foreignKey: "operation_id", as: "journalEntries" });
 
+Journal.hasMany(JournalDetail, {
+  foreignKey: "journal_id",
+  as: "details"
+});
+
+JournalDetail.belongsTo(Journal, {
+  foreignKey: "journal_id",
+  as: "journal"
+});
+
+Account.hasMany(JournalDetail, {
+  foreignKey: "account_id",
+  as: "journalDetails"
+});
+
+JournalDetail.belongsTo(Account, {
+  foreignKey: "account_id",
+  as: "account"
+});
+
 // ------------------------
 // 🚀 Exportar todo
 // ------------------------
@@ -218,5 +243,9 @@ module.exports = {
   Supplier,
   Tx,
   LocationProduct,
-  JournalEntry
+  InventoryMovement,
+  JournalEntry,
+  Account,
+  Journal,
+  JournalDetail 
 };

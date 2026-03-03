@@ -66,6 +66,18 @@ Order.init(
       defaultValue: false,
     },
 
+    subtotal: {
+  type: DataTypes.DECIMAL(15,2),
+  allowNull: false,
+  defaultValue: 0,
+},
+
+tax: {
+  type: DataTypes.DECIMAL(15,2),
+  allowNull: false,
+  defaultValue: 0,
+},
+
     user_creates_id: {
       type: DataTypes.INTEGER,
       allowNull: true,

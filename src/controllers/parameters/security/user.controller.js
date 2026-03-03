@@ -46,8 +46,7 @@ if (validpassword) {
       email: existUser.email,
       role: existUser.role
     },
-   process.env.JWT_SECRET,
-
+    process.env.JWT_SECRET || 'clave_secreta',
     { expiresIn: '1h' }
   );
 

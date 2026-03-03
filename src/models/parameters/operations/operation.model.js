@@ -86,6 +86,18 @@ Operation.init(
       allowNull: true,
     },
 
+    base_amount: {
+  type: DataTypes.FLOAT,
+  field: "base_amount",
+  defaultValue: 0
+},
+
+tax_amount: {
+  type: DataTypes.FLOAT,
+  field: "tax_amount",
+  defaultValue: 0
+},
+
     is_active: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
