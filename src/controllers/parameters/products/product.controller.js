@@ -1,5 +1,5 @@
 const { Op } = require("sequelize");
-const { Product, Supplier, Location, LocationProduct } = require("../../../models/model-index");
+const { Product, Supplier, Location, LocationProduct, Category} = require("../../../models/model-index");
 
 /** ============================================================
  * 📋 LISTAR TODOS LOS PRODUCTOS
@@ -7,7 +7,9 @@ const { Product, Supplier, Location, LocationProduct } = require("../../../model
 const index = async (req, res) => {
   try {
     const products = await Product.findAll({
+   
       include: [
+         { model: Category, as: "category" },   // 👈 agregar esto
         { model: Supplier, as: "supplier" },
         { model: Location, as: "locations", through: { attributes: ["stock"] } }, // incluir stock por ubicación
       ],
@@ -82,14 +84,17 @@ const create = async (req, res) => {
   try {
     let {
       name,
-      category,
+      category_id,
       quantity,       // stock global
+      minimum_stock,   // 👈 FALTA ESTO
       purchasePrice,
       salePrice,
       supplierId,
       locationId,     // ubicación inicial opcional
       image,
       isActive,
+      taxType,
+     taxRate
     } = req.body;
 
     // Limpiar y validar nombre
@@ -121,14 +126,17 @@ const create = async (req, res) => {
     const newProduct = await Product.create({
       code: newCode,
       name,
-      category,
+      category_id,
       quantity,
+      minimum_stock,   // 👈 FALTA ESTO
       purchasePrice,
       salePrice,
       supplier_id: supplierId || null,
-
       image,
-      isActive: isActive ?? true
+      isActive: isActive ?? true,
+      taxType,
+  taxRate   // 👈 ESTA ES LA LÍNEA QUE FALTABA
+
     });
 
     // ✅ Crear registro en LocationProduct si hay locationId
@@ -201,13 +209,15 @@ const update = async (req, res) => {
 
     const {
       name,
-      category,
+     category_id,
       quantity,
       purchasePrice,
       salePrice,
       supplierId,
       image,
-      isActive
+      isActive,
+       taxType,
+  taxRate
     } = req.body;
 
     const product = await Product.findByPk(id);
@@ -219,20 +229,18 @@ const update = async (req, res) => {
       });
     }
 
-    await Product.update(
-      {
-        name,
-        category,
-        quantity,
-       purchasePrice,
-        salePrice,
-        supplier_id, 
-        image,
-        isActive
-      },
-      { where: { id } }
-    );
-
+  await product.update({
+  name,
+ category_id,
+  quantity,
+  purchasePrice,
+  salePrice,
+  supplier_id: supplierId,
+  image,
+  isActive,
+  taxType,
+  taxRate
+});
     const productUpdated = await Product.findByPk(id, {
       include: [
         { model: Supplier, as: "supplier" },

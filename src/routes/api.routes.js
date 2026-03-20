@@ -69,6 +69,10 @@ router.use("/accounting/journals", journalRouter); // 🔹 Asegurarse del /api s
 const reportsRouter = require("./parameters/reports/report.routes");
 router.use("/parameters/reports", reportsRouter); // ✅ Correcto
 
+/** rutas para el controlador de categorias */
+const categoryRouter = require("./parameters/categories/category.routes");
+router.use("/parameters/categories", categoryRouter);
+
 
 
 

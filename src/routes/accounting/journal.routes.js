@@ -10,6 +10,8 @@ router.get("/report", journalController.report);
 router.get("/trial-balance", journalController.trialBalance);
 router.get("/income-statement", journalController.getIncomeStatement); // ✅ CORREGIDO
 router.get("/balance-sheet", getBalanceSheet);
+router.get("/ledger/:account_id", journalController.getLedger);
+router.get("/accounts", journalController.getAccounts);
 
 router.get("/", journalController.index);
 router.get("/:id", journalController.show);

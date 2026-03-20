@@ -186,17 +186,17 @@ const create = async (req, res) => {
         });
       }
 
-    const product = await Product.findByPk(product_id, {
+  const product = await Product.findByPk(product_id, {
   attributes: [
     "id",
     "name",
+    "quantity",       // 👈 ESTA ES LA CLAVE
     "purchasePrice",
     "taxType",
     "taxRate"
   ],
   transaction: t,
 });
-
       if (!product) {
         await t.rollback();
         return res.status(404).json({
@@ -262,32 +262,38 @@ const create = async (req, res) => {
         { transaction: t }
       );
 
-      // ===============================
-      // 🔹 ACTUALIZAR STOCK
-      // ===============================
-      product.quantity = (product.quantity || 0) + Number(quantity);
-      await product.save({ transaction: t });
+    // ===============================
+// 🔹 ACTUALIZAR STOCK (DENTRO DEL LOOP)
+// ===============================
 
-      let lp = await LocationProduct.findOne({
-        where: { location_id, product_id },
-        transaction: t,
-      });
+// 1. Esto ya lo haces (Actualiza la tienda específica 1, 2 o Principal)
+let lp = await LocationProduct.findOne({
+  where: { location_id, product_id },
+  transaction: t,
+});
 
-      if (lp) {
-        lp.stock += Number(quantity);
-        await lp.save({ transaction: t });
-      } else {
-        await LocationProduct.create(
-          {
-            location_id,
-            product_id,
-            stock: Number(quantity),
-          },
-          { transaction: t }
-        );
-      }
-    }
+if (lp) {
+  lp.stock = Number(lp.stock) + Number(quantity);
+  await lp.save({ transaction: t });
+} else {
+  await LocationProduct.create({
+    location_id, product_id, stock: Number(quantity)
+  }, { transaction: t });
+}
 
+// 2. 🔥 ESTO ES LO QUE TE FALTA PARA LA TIENDA 1:
+// Obligamos al sistema a sumar TODAS las ubicaciones para este producto
+const totalGeneral = await LocationProduct.sum('stock', {
+  where: { product_id },
+  transaction: t
+});
+
+// 3. Sincronizamos la lista de productos con el gran total
+await Product.update(
+  { quantity: totalGeneral || 0 }, // 'quantity' es el campo de tu lista
+  { where: { id: product_id }, transaction: t }
+);
+    } // 👈 AQUÍ TERMINA EL BUCLE FOR (for const item of items)
     // ===============================
     // 5️⃣ REDONDEAR Y GUARDAR
     // ===============================
@@ -334,6 +340,7 @@ const create = async (req, res) => {
     });
   }
 };
+
 /* ===========================================================
    📌 OBTENER UNA ENTRADA
 =========================================================== */

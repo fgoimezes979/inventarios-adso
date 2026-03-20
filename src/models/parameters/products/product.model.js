@@ -53,10 +53,10 @@ Product.init(
       allowNull: false,
       unique: true,
     },
-    category: {
-      type: DataTypes.STRING(50),
-      allowNull: false,
-    },
+   category_id: {
+  type: DataTypes.INTEGER,
+  allowNull: false,
+},
     quantity: {
       type: DataTypes.INTEGER,
       allowNull: false,

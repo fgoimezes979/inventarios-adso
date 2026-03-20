@@ -15,23 +15,40 @@ const { createJournalsFromOperation } = require("../../../services/accounting/cr
 =========================================================== */
 const index = async (req, res) => {
   try {
+
     const orders = await Order.findAll({
       include: [
         { model: Client, as: "client" },
-        { model: Location, as: "location" }
+        { model: Location, as: "location" },
+
+        {
+          model: OrderProduct,
+          as: "order_items",
+          attributes: ["quantity"],
+          include: [
+            {
+              model: Product,
+              as: "product",
+              attributes: ["id", "name"]
+            }
+          ]
+        }
+
       ],
       order: [["id", "DESC"]],
     });
 
     const ordersFormatted = orders.map(order => {
+
       const plain = order.toJSON();
 
       return {
         ...plain,
-        // 👇 usamos el total de la BD, REAL
+
         total_price: Number(plain.total_price) || 0,
 
         cliente: plain.client?.name || "N/A",
+
         estadoTraducido:
           plain.state === "PENDING"
             ? "Pendiente"
@@ -40,17 +57,21 @@ const index = async (req, res) => {
             : plain.state === "DELIVERED"
             ? "Entregado / Despachado"
             : "N/A",
+
+        products: plain.order_items || []
       };
+
     });
 
     res.json(ordersFormatted);
 
   } catch (error) {
+
     console.error("❌ Error al listar órdenes:", error);
     res.status(500).json({ error: "Error al listar órdenes" });
+
   }
 };
-
 // MOSTRAR ORDEN PARA EDITAR
 const show = async (req, res) => {
   try {
@@ -210,15 +231,21 @@ const create = async (req, res) => {
     console.log("📥 BODY RECIBIDO EN ORDEN:", req.body);
 
     const {
-      products,
-      state,
-      date,
-      due_date,
-      client_id,
-      location_id,
-      user_creates_id,
-    } = req.body;
+  products,
+  state,
+  date,
+  due_date,
+  location_id,
+  user_creates_id,
+} = req.body;
 
+// 👇 lo defines UNA sola vez
+const client_id = req.body.client_id || req.body.clientId;
+
+const orderDate = date ? new Date(date) : new Date();
+    // ============================
+    // VALIDAR PRODUCTOS
+    // ============================
     if (!Array.isArray(products) || products.length === 0) {
       return res.status(400).json({
         status: false,
@@ -227,22 +254,47 @@ const create = async (req, res) => {
     }
 
     // ============================
+    // VALIDAR CLIENTE
+    // ============================
+    const client = await Client.findByPk(client_id);
+
+    if (!client) {
+      return res.status(400).json({
+        status: false,
+        msg: "El cliente no existe",
+      });
+    }
+
+    // ============================
+    // VALIDAR UBICACIÓN
+    // ============================
+    const location = await Location.findByPk(location_id);
+
+    if (!location) {
+      return res.status(400).json({
+        status: false,
+        msg: "La ubicación no existe",
+      });
+    }
+
+
+    // ============================
     // 1️⃣ CREAR ORDEN
     // ============================
     const order = await Order.create(
-      {
-        date,
-        due_date,
-        state,
-        client_id,
-        location_id,
-        user_creates_id,
-        subtotal: 0,
-        tax: 0,
-        total_price: 0,
-      },
-      { transaction: t }
-    );
+{
+  date: orderDate,
+  due_date,
+  state,
+  client_id,
+  location_id,
+  user_creates_id,
+  subtotal: 0,
+  tax: 0,
+  total_price: 0,
+},
+{ transaction: t }
+);
 
     let totalSubtotal = 0;
     let totalTax = 0;
@@ -261,26 +313,38 @@ const create = async (req, res) => {
       if (!product) throw new Error("Producto no encontrado");
 
       const qty = Number(item.quantity);
+      if (isNaN(qty) || qty <= 0) {
+        throw new Error(`Cantidad inválida para ${product.name}`);
+      }
 
       if (product.quantity < qty) {
         throw new Error(`Stock insuficiente para ${product.name}`);
       }
 
-      const unitPrice = Number(item.unit_price ?? product.sale_price);
+      // 🔹 PRECIO UNITARIO SEGURO
+      const unitPrice = Number(item.unit_price ?? product.sale_price ?? 0);
+
+      if (isNaN(unitPrice) || unitPrice <= 0) {
+        throw new Error(`Precio inválido para ${product.name}`);
+      }
 
       // 🔹 SUBTOTAL
       const lineSubtotal = qty * unitPrice;
 
-      // 🔹 IVA DINÁMICO
-      const taxRate = Number(product.taxRate ?? 0);
+      // 🔹 IVA SEGURO
+      const taxRate = Number(product.taxRate ?? product.tax_rate ?? 0);
       const lineTax = lineSubtotal * (taxRate / 100);
 
-      // 🔹 TOTAL LÍNEA
+      // 🔹 TOTAL
       const lineTotal = lineSubtotal + lineTax;
 
-      // 🔹 COSTO (para asiento costo venta)
-      const cost = Number(product.purchase_price) * qty;
+      // 🔹 COSTO SEGURO
+      const purchasePrice = Number(product.purchase_price ?? product.purchasePrice ?? 0);
+      const cost = purchasePrice * qty;
 
+      // ============================
+      // GUARDAR RELACIÓN
+      // ============================
       await OrderProduct.create(
         {
           order_id: order.id,
@@ -292,11 +356,15 @@ const create = async (req, res) => {
         { transaction: t }
       );
 
-      // 🔹 DESCONTAR STOCK GENERAL
+      // ============================
+      // DESCONTAR STOCK GENERAL
+      // ============================
       product.quantity -= qty;
       await product.save({ transaction: t });
 
-      // 🔹 DESCONTAR STOCK POR UBICACIÓN
+      // ============================
+      // DESCONTAR STOCK UBICACIÓN
+      // ============================
       const locProd = await LocationProduct.findOne({
         where: { product_id: product.id, location_id },
         transaction: t,
@@ -309,71 +377,71 @@ const create = async (req, res) => {
       locProd.stock -= qty;
       await locProd.save({ transaction: t });
 
-      // 🔹 ACUMULAR TOTALES
+      // ============================
+      // ACUMULAR
+      // ============================
       totalSubtotal += lineSubtotal;
       totalTax += lineTax;
       totalInvoice += lineTotal;
-      totalCost += cost;
+      totalCost += isNaN(cost) ? 0 : cost;
     }
 
     // ============================
-    // 3️⃣ ACTUALIZAR TOTALES ORDEN
+    // 3️⃣ ACTUALIZAR ORDEN
     // ============================
     await order.update(
       {
-        subtotal: totalSubtotal,
-        tax: totalTax,
-        total_price: totalInvoice,
+        subtotal: Number(totalSubtotal.toFixed(2)),
+        tax: Number(totalTax.toFixed(2)),
+        total_price: Number(totalInvoice.toFixed(2)),
       },
       { transaction: t }
     );
 
     // ============================
-    // 4️⃣ CREAR OPERATION
+    // 4️⃣ CREAR OPERACIÓN (VENTA)
     // ============================
     const operation = await Operation.create(
-{
-  date: new Date(),
-  description: `Venta de mercancía – Orden #${order.id}`,
-  type: "SALE",
+      {
+        date: new Date(),
+        description: `Venta de mercancía – Orden #${order.id}`,
+        type: "SALE",
+        base_amount: totalSubtotal,
+        tax_amount: totalTax,
+        total: totalInvoice,
+        amount: totalInvoice,
+        user: user_creates_id ?? "Sistema",
+        location_id,
+        order_id: order.id,
+        is_active: true,
+      },
+      { transaction: t }
+    );
 
-  base_amount: totalSubtotal,   // 🔥 aquí está el cambio
-  tax_amount: totalTax,         // 🔥 aquí está el cambio
-  total: totalInvoice,
-  amount: totalInvoice,
-
-  user: user_creates_id ?? "Sistema",
-  location_id,
-  order_id: order.id,
-  is_active: true,
-},
-{ transaction: t }
-);
-
-// ============================
-// 5️⃣ CREAR OPERATION DETAILS
-// ============================
-for (const item of products) {
-
-  const product = await Product.findByPk(item.product_id, {
-    transaction: t,
-  });
-
-  await OperationDetail.create(
-    {
-      operation_id: operation.id,
-      product_id: product.id,
-      quantity: item.quantity,
-      sale_price: item.unit_price ?? product.sale_price,
-      purchase_price: product.purchase_price,
-      type: "SALE",
-      is_active: true,
-    },
-    { transaction: t }
-  );
-}
     // ============================
-    // 5️⃣ CONTABILIDAD
+    // 5️⃣ DETALLES OPERACIÓN
+    // ============================
+    for (const item of products) {
+      const product = await Product.findByPk(item.product_id, {
+        transaction: t,
+      });
+
+      await OperationDetail.create(
+        {
+          operation_id: operation.id,
+          product_id: product.id,
+          quantity: Number(item.quantity),
+          salePrice: Number(item.unit_price ?? product.sale_price ?? 0),
+          purchasePrice: Number(product.purchase_price ?? product.purchasePrice ?? 0),
+          type: "SALE",
+          is_active: true,
+        },
+        { transaction: t }
+      );
+    }
+
+    // ============================
+    // 6️⃣ CONTABILIDAD
     // ============================
     await createJournalsFromOperation(operation, t);
 
@@ -381,7 +449,7 @@ for (const item of products) {
 
     return res.status(201).json({
       status: true,
-      msg: "Orden creada con IVA y contabilidad automática ✅",
+      msg: "Orden creada correctamente ✅",
       order,
       operation,
     });
@@ -397,6 +465,8 @@ for (const item of products) {
     });
   }
 };
+
+
 /* ===========================================================
    ✏️ ACTUALIZAR ORDEN (con stock correcto + totales correctos)
 =========================================================== */

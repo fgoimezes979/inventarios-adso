@@ -23,6 +23,7 @@ const InventoryMovement = require("./parameters/reports/inventoryMovement.model.
 const Account = require("./accounting/account.model.js");
 const Journal = require("./accounting/journal.model.js");
 const JournalDetail = require("./accounting/journalDetail.model.js");
+const Category = require("./parameters/cotegories/category.model.js");
 
 
 
@@ -222,6 +223,34 @@ JournalDetail.belongsTo(Account, {
   foreignKey: "account_id",
   as: "account"
 });
+//doble aciento
+
+Product.hasMany(OperationDetail, {
+  foreignKey: "product_id",
+  as: "operationDetails"
+});
+//usuarios por tienda
+User.belongsTo(Location, {
+  foreignKey: "location_id",
+  as: "location"
+});
+
+Location.hasMany(User, {
+  foreignKey: "location_id",
+  as: "users"
+});
+
+//categorias
+
+Product.belongsTo(Category,{
+  foreignKey:"category_id",
+  as:"category"
+});
+
+Category.hasMany(Product,{
+  foreignKey:"category_id",
+  as:"products"
+});
 
 // ------------------------
 // 🚀 Exportar todo
@@ -247,5 +276,6 @@ module.exports = {
   JournalEntry,
   Account,
   Journal,
-  JournalDetail 
+  JournalDetail, 
+  Category
 };

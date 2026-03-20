@@ -197,11 +197,12 @@ if (type === "SALE") {
 
   let totalCost = 0;
 
-  for (const d of details) {
-    totalCost += Number(d.product.purchase_price) * Number(d.quantity);
-  }
+ for (const d of details) {
+  totalCost += Number(d.purchasePrice) * Number(d.quantity);
+}
 
   totalCost = Number(totalCost.toFixed(2));
+  console.log("TOTAL COSTO CALCULADO:", totalCost);
 
   if (totalCost > 0) {
 

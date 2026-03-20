@@ -165,8 +165,141 @@ const trialBalance = async (req, res) => {
   }
 };
 
+ /* ===========================================================
+   📌 LISTAR PLAN DE CUENTAS (para selector en frontend)
+=========================================================== */
+
+const getAccounts = async (req, res) => {
+  try {
+
+    const [rows] = await sequelize.query(`
+      SELECT 
+        id,
+        code,
+        name
+      FROM accounts
+      ORDER BY code ASC
+    `);
+
+    return res.status(200).json({
+      status: true,
+      accounts: rows
+    });
+
+  } catch (error) {
+
+    console.error("❌ Error obteniendo cuentas:", error);
+
+    return res.status(500).json({
+      status: false,
+      msg: "Error obteniendo cuentas contables",
+      error: error.message
+    });
+
+  }
+};
 
 
+/* ===========================================================
+   📌 LIBRO MAYOR
+=========================================================== */
+
+const getLedger = async (req, res) => {
+  try {
+
+    const { account_id } = req.params;
+    const { from, to } = req.query;
+
+    /** ------------------------------------
+     * 1️⃣ SALDO INICIAL ANTES DEL PERIODO
+    ------------------------------------- */
+
+    const [openingRows] = await sequelize.query(`
+      SELECT 
+        SUM(jd.debit) AS debit,
+        SUM(jd.credit) AS credit
+      FROM journal_details jd
+      JOIN journals j ON jd.journal_id = j.id
+      WHERE jd.account_id = :account_id
+      AND j.date < :from
+    `,{
+      replacements: { account_id, from }
+    });
+
+    let openingBalance =
+      Number(openingRows[0].debit || 0) -
+      Number(openingRows[0].credit || 0);
+     
+
+
+    /** ------------------------------------
+     * 2️⃣ MOVIMIENTOS DEL PERIODO
+    ------------------------------------- */
+
+    const [rows] = await sequelize.query(`
+      SELECT 
+        j.date,
+        j.description,
+        a.code,
+        a.name,
+        jd.debit,
+        jd.credit
+      FROM journal_details jd
+      JOIN journals j ON jd.journal_id = j.id
+      JOIN accounts a ON jd.account_id = a.id
+      WHERE jd.account_id = :account_id
+      AND j.date BETWEEN :from AND :to
+      ORDER BY j.date, jd.id
+    `,{
+      replacements: { account_id, from, to }
+    });
+
+    let balance = openingBalance;
+
+    const ledger = rows.map(row => {
+
+      balance += Number(row.debit) - Number(row.credit);
+
+      return {
+        date: row.date,
+        description: row.description,
+        account: `${row.code} - ${row.name}`,
+        debit: Number(row.debit),
+        credit: Number(row.credit),
+        balance
+      };
+
+    });
+
+
+    /** ------------------------------------
+     * 3️⃣ TOTALES
+    ------------------------------------- */
+
+    const totalDebit = ledger.reduce((sum, r) => sum + r.debit, 0);
+    const totalCredit = ledger.reduce((sum, r) => sum + r.credit, 0);
+
+
+    return res.status(200).json({
+      status: true,
+      openingBalance,
+      totalDebit,
+      totalCredit,
+      closingBalance: balance,
+      ledger
+    });
+
+  } catch (error) {
+
+    console.error("❌ Error libro mayor:", error);
+
+    return res.status(500).json({
+      status: false,
+      msg: "Error obteniendo libro mayor",
+      error: error.message
+    });
+  }
+};
 /* ===========================================================
    📌 OBTENER ASIENTO POR ID
 =========================================================== */
@@ -322,4 +455,6 @@ module.exports = {
   show,
   update,
   destroy,
+  getLedger,
+  getAccounts
 };
