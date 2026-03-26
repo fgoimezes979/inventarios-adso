@@ -362,6 +362,21 @@ const orderDate = date ? new Date(date) : new Date();
       product.quantity -= qty;
       await product.save({ transaction: t });
 
+      // REGISTRO EN ESPEJO PARA EL MÓDULO DE SALIDAS
+await Out.create({
+  code_product: `${product.code}-${order.id}-${Date.now()}`,
+  product_id: product.id,
+  location_id: location_id,
+  order_id: order.id,
+  date: orderDate,
+  client: client.name || "CLIENTE GENERAL",
+  user: user_creates_id || "Sistema/POS",
+  quantity: qty,
+  salePrice: unitPrice,
+  totalPrice: lineTotal,
+  is_active: true
+}, { transaction: t });
+
       // ============================
       // DESCONTAR STOCK UBICACIÓN
       // ============================
@@ -781,6 +796,15 @@ const destroy = async (req, res) => {
       error: error.message,
     });
   }
+  if (products?.length) {
+  // Eliminar productos de la orden anterior
+  await OrderProduct.destroy({ where: { order_id: id }, transaction: t });
+  
+  // 🔥 NUEVO: Eliminar también las salidas viejas para que no se dupliquen
+  await Out.destroy({ where: { order_id: id }, transaction: t });
+
+  // ... sigue el bucle for para crear los nuevos productos ...
+}
 };
 
 
