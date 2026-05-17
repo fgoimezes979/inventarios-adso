@@ -48,29 +48,28 @@ const initSystem = async () => {
   console.log("✅ Datos base listos");
 };
 
+// =============================
+// 🔥 ARRANQUE CORRECTO
+// =============================
 const startServer = async () => {
 
-  // 🚀 levantar servidor SIEMPRE
-  app.listen(process.env.PORT || 3000, () => {
-    console.log(`🚀 Servidor iniciado en puerto ${process.env.PORT || 3000}`);
-  });
-
   try {
-
     // 🔥 conectar BD
     await sequelize.authenticate();
     console.log('✅ Base de datos conectada');
 
-    // 🔥 datos base
+    // 🔥 crear datos base SIEMPRE
     await initSystem();
 
+    // 🔥 levantar servidor
+    app.listen(process.env.PORT, () => {
+      console.log(`🚀 Servidor iniciado en puerto ${process.env.PORT}`);
+    });
+
   } catch (error) {
-
-    console.error('❌ Error MySQL:', error);
-
+    console.error('❌ Error al iniciar:', error);
   }
 
-};
 };
 
 startServer();
