@@ -17,12 +17,12 @@ export class ProductService {
   getProduct() {
     throw new Error('Method not implemented.');
   }
-  private apiUrl = 'http://localhost:4040/api/parameters/product'; // Asegúrate de que esta sea la URL correcta
+  private apiUrl = 'https://inventarios-adso-api.onrender.com/api/parameters/product'; // Asegúrate de que esta sea la URL correcta
 
   constructor(private http: HttpClient) {}
 
   getProductById(id: number): Observable<any> {
-    return this.http.get<any>(`http://localhost:4040/api/parameters/product/${id})`).pipe(
+    return this.http.get<any>(`https://inventarios-adso-api.onrender.com/api/parameters/product/${id})`).pipe(
       map(response => {
         if (response) {
           console.log('respuesta del backend:',response);

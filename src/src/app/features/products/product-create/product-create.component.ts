@@ -22,7 +22,7 @@ export class ProductCreateComponent {
 
   onSubmit() {
     if (this.productForm.valid) {
-      this.http.post('http://localhost:4040/api/parameters/product', this.productForm.value)
+      this.http.post('https://inventarios-adso-api.onrender.com/api/parameters/product', this.productForm.value)
         .subscribe({
           next: res => {
             console.log('Producto creado:', res);

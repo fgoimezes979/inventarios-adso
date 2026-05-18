@@ -9,7 +9,7 @@ import { Injectable } from '@angular/core';
   
 })
 export class CreateService{
- readonly API_URL = "http://localhost:4040/api/parameters/product"
+ readonly API_URL = "https://inventarios-adso-api.onrender.com/api/parameters/product"
   creates: any[];
 
   constructor(private http: HttpClient){
