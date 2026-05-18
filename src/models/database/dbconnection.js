@@ -1,13 +1,21 @@
 const { Sequelize } = require('sequelize');
 
 const sequelize = new Sequelize(
-  'inventario',
+  'railway',
   'root',
-  '',
+  'WUqQDtzJHSpYcsRyuMGJBxwqbAvDwAaT',
   {
-    host: 'localhost',
+    host: 'yamabiko.proxy.rlwy.net',
+    port: 32678,
     dialect: 'mysql',
-    timezone: '-05:00'
+    timezone: '-05:00',
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false
+      },
+      connectTimeout: 60000
+    }
   }
 );
 
