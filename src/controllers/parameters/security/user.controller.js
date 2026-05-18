@@ -1,46 +1,91 @@
-/**validar que la contraseña sea correcta,promero desencriptar la clave */
+/**hastear una contraseña */
 
-console.log("EMAIL RECIBIDO:", email);
-console.log("PASSWORD RECIBIDO:", password);
-console.log("USUARIO ENCONTRADO:", existUser);
-console.log("HASH BD:", existUser.password);
+const bcrypt = require("bcrypt");
+const { Op } = require("sequelize");
 
-const validpassword = bcrypt.compareSync(
-  password,
-  existUser.password
-);
+const User = require('../../../models/security/user.model');
+const { json } = require('sequelize');
+const sequelize = require('../../../models/database/dbconnection');
+const jwt = require('jsonwebtoken');
 
-console.log("RESULTADO BCRYPT:", validpassword);
+/** login */
 
-if (validpassword) {
+const login = async (req, res) => {
 
-  const token = jwt.sign(
-    {
-      id: existUser.id,
-      email: existUser.email,
-      role: existUser.role
-    },
-    process.env.JWT_SECRET || 'clave_secreta',
-    { expiresIn: '1h' }
-  );
+  try {
 
-  const { password, ...userSafe } = existUser.dataValues;
+    const { email, password } = req.body;
 
-  return res.status(200).json({
-    status: true,
-    msg: "inicio de sesion correcta",
-    user: userSafe,
-    token: token
-  });
+    /** buscar usuario por email */
 
-} else {
+    const existUser = await User.findOne({
+      where: { email: email }
+    });
 
-  /**mensaje error contaseña invalida */
+    /** usuario no existe */
 
-  return res.status(404).json({
-    status:false,
-    msg: "el password es incorrecto, verifiquelo",
-    user: null,
-  });
+    if (!existUser) {
 
-}
+      return res.status(404).json({
+        status: false,
+        msg: "el usuario es invalido, verifiquelo",
+        user: null,
+      });
+
+    }
+
+    /** validar contraseña */
+
+    const validpassword = bcrypt.compareSync(
+      password,
+      existUser.password
+    );
+
+    if (validpassword) {
+
+      const token = jwt.sign(
+        {
+          id: existUser.id,
+          email: existUser.email,
+          role: existUser.role
+        },
+        process.env.JWT_SECRET || 'clave_secreta',
+        { expiresIn: '1h' }
+      );
+
+      const { password, ...userSafe } = existUser.dataValues;
+
+      return res.status(200).json({
+        status: true,
+        msg: "inicio de sesion correcta",
+        user: userSafe,
+        token: token
+      });
+
+    } else {
+
+      return res.status(404).json({
+        status: false,
+        msg: "el password es incorrecto, verifiquelo",
+        user: null,
+      });
+
+    }
+
+  } catch (error) {
+
+    return res.status(500).json({
+      status: false,
+      msg: "error en login - " + error.message,
+      user: null,
+    });
+
+  }
+
+};
+
+/** exportar */
+
+module.exports = {
+  login
+};
