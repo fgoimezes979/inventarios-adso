@@ -43,7 +43,7 @@ const initSystem = async () => {
   await Location.findOrCreate({
     where: { name: 'PRINCIPAL' },
     defaults: {
-      name: 'PRINCIPAL'
+      name: 'PRINCIPAL',
         code: 'LOC001'
     }
   });
