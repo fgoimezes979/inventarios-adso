@@ -44,7 +44,7 @@ const initSystem = async () => {
     where: { name: 'PRINCIPAL' },
     defaults: {
       name: 'PRINCIPAL'
-      // code: 'LOC-001'
+        code: 'LOC001'
     }
   });
 
